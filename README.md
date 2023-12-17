@@ -1,7 +1,7 @@
 # final-project-python
 final project on python
 
-Certainly! I'll provide explanations for each function in the modified code:
+Explanations for each function in the modified code:
 
 1. `create_table(self)`: This method is responsible for creating the SQLite table if it doesn't exist. The table has columns for task id, task name, date, and priority.
 
