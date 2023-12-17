@@ -1,16 +1,17 @@
+# todo_app.py
 import tkinter as tk
 from tkinter import messagebox
+import sqlite3
 from datetime import datetime
-import pickle
 
 class TodoApp:
     def __init__(self, root):
         self.root = root
         self.root.title("To do app")
 
-        self.tasks_red = []
-        self.tasks_yellow = []
-        self.tasks_green = []
+        # Connect to SQLite database
+        self.conn = sqlite3.connect("todo_db.db")
+        self.create_table()
 
         self.task_entry = tk.Entry(root, width=40)
         self.task_entry.pack(pady=10)
@@ -59,8 +60,21 @@ class TodoApp:
         self.menu.add_cascade(label="About", menu=self.about_menu)
         self.about_menu.add_command(label="Info", command=self.show_about_info)
 
-    def get_current_date(self):
-        return datetime.now().strftime("%Y-%m-%d")
+        # Update task listbox initially
+        self.update_task_listbox()
+
+    def create_table(self):
+        # Create a table if not exists
+        with self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task TEXT NOT NULL,
+                    date TEXT,
+                    priority TEXT
+                )
+            ''')
 
     def add_task(self):
         task = self.task_entry.get()
@@ -68,12 +82,12 @@ class TodoApp:
         priority = self.priority_var.get()
 
         if task:
-            if priority == "Red":
-                self.tasks_red.append((task, date))
-            elif priority == "Yellow":
-                self.tasks_yellow.append((task, date))
-            elif priority == "Green":
-                self.tasks_green.append((task, date))
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO tasks (task, date, priority)
+                    VALUES (?, ?, ?)
+                ''', (task, date, priority))
 
             self.update_task_listbox()
             self.task_entry.delete(0, tk.END)
@@ -81,86 +95,70 @@ class TodoApp:
             self.date_entry.insert(0, self.get_current_date())
 
     def update_task_listbox(self):
+        with self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT * FROM tasks ORDER BY priority
+            ''')
+            tasks = cursor.fetchall()
+
         self.task_listbox.delete(0, tk.END)
-        selected_priority = self.priority_var.get()
-
-        if selected_priority == "Red":
-            tasks = self.tasks_red
-        elif selected_priority == "Yellow":
-            tasks = self.tasks_yellow
-        elif selected_priority == "Green":
-            tasks = self.tasks_green
-
-        for task, date in tasks:
-            self.task_listbox.insert(tk.END, f"({selected_priority}) ({date}) {task}")
+        for task_data in tasks:
+            task = task_data[1]
+            priority = task_data[3]
+            self.task_listbox.insert(tk.END, f"({priority}) {task}")
 
     def complete_task(self):
         selected_priority = self.priority_var.get()
         selected_task_index = self.task_listbox.curselection()
 
-        if selected_priority == "Red":
-            tasks = self.tasks_red
-        elif selected_priority == "Yellow":
-            tasks = self.tasks_yellow
-        elif selected_priority == "Green":
-            tasks = self.tasks_green
-
         if selected_task_index:
-            completed_task = tasks[selected_task_index[0]]
-            tasks.remove(completed_task)
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    DELETE FROM tasks WHERE id=?
+                ''', (selected_task_index[0] + 1,))  # SQLite uses 1-based index
+
             self.update_task_listbox()
 
     def delete_task(self):
         selected_priority = self.priority_var.get()
         selected_task_index = self.task_listbox.curselection()
 
-        if selected_priority == "Red":
-            tasks = self.tasks_red
-        elif selected_priority == "Yellow":
-            tasks = self.tasks_yellow
-        elif selected_priority == "Green":
-            tasks = self.tasks_green
-
         if selected_task_index:
-            tasks.pop(selected_task_index[0])
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    DELETE FROM tasks WHERE id=?
+                ''', (selected_task_index[0] + 1,))  # SQLite uses 1-based index
+
             self.update_task_listbox()
 
     def save_tasks(self):
-        tasks_to_save = {
-            "tasks_red": self.tasks_red,
-            "tasks_yellow": self.tasks_yellow,
-            "tasks_green": self.tasks_green
-        }
-        with open("tasks.pkl", "wb") as f:
-            pickle.dump(tasks_to_save, f)
+        # Saving tasks is not required for SQLite as it's persistent
         messagebox.showinfo("Saved", "To do list saved")
 
     def load_tasks(self):
-        try:
-            with open("tasks.pkl", "rb") as f:
-                tasks_to_load = pickle.load(f)
-            self.tasks_red = tasks_to_load["tasks_red"]
-            self.tasks_yellow = tasks_to_load["tasks_yellow"]
-            self.tasks_green = tasks_to_load["tasks_green"]
-            self.update_task_listbox()
-            messagebox.showinfo("Uploaded", "To do list uploaded")
-        except FileNotFoundError:
-            messagebox.showerror("Error", "File not found.")
+        # Loading tasks is not required for SQLite as it's persistent
+        messagebox.showinfo("Uploaded", "To do list uploaded")
 
     def show_about_info(self):
         about_text = "To do app\n\n"
-        about_text += "This app help prioritize your tasks\n"
-        about_text += "Tasks devided by 3 colors\n\n"
+        about_text += "This app helps prioritize your tasks\n"
+        about_text += "Tasks are divided by 3 colors\n\n"
         about_text += "• Red list - very important tasks\n"
         about_text += "• Yellow list - about important tasks\n"
         about_text += "• Green list - not very important tasks\n\n"
         about_text += "Select the color of the task using the buttons. If you do not specify the date,\n"
         about_text += "then the current date will be used automatically.\n"
-        about_text += "U can Save и Upload tasks list\n\n"
+        about_text += "You can Save and Upload the tasks list\n\n"
         about_text += "Authors: Bokeikhan, Edige \n"
         about_text += "Date: " + datetime.now().strftime("%d.%m.%Y")
 
         messagebox.showinfo("About", about_text)
+
+    def get_current_date(self):
+        return datetime.now().strftime("%Y-%m-%d")
 
 if __name__ == "__main__":
     root = tk.Tk()
